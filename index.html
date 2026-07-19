@@ -181,15 +181,11 @@
   .media-modal{
     position: fixed;
     inset: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    z-index: 9999;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition: opacity .25s ease, visibility .25s ease;
+    transition: opacity .2s ease, visibility .2s ease;
   }
   .media-modal.is-open{
     opacity: 1;
@@ -199,59 +195,116 @@
   .media-modal-backdrop{
     position: absolute;
     inset: 0;
-    background: rgba(8,8,10,0.96);
+    background: #000;
   }
   .media-modal-dialog{
     position: relative;
     z-index: 1;
     width: 100%;
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 16px;
-    padding: 56px 16px 24px;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    gap: 12px;
   }
   .media-modal-title{
     font-family: var(--display);
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.35;
     color: #EDEBE3;
     text-align: center;
-    padding: 0 12px;
+    padding: 44px 36px 0 8px;
   }
   .media-modal-player{
+    position: relative;
     width: 100%;
-    aspect-ratio: 16/9;
-    border-radius: 14px;
+    min-height: 0;
+    height: 100%;
     overflow: hidden;
     background: #000;
-    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .media-modal-player video{
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    background: #000;
+    display: block;
   }
   .media-modal-player iframe{
+    display: none;
     width: 100%;
     height: 100%;
     border: 0;
+    background: #000;
+  }
+  .media-modal-player.is-fallback iframe{
     display: block;
   }
-  .media-modal-close{
+  .media-modal-player.is-fallback video{
+    display: none;
+  }
+  .media-modal-loading{
     position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9C9A8E;
+  }
+  .media-modal-player.is-loading .media-modal-loading{
+    display: flex;
+  }
+  .media-modal-actions{
+    display: flex;
+    justify-content: center;
+  }
+  .media-modal-drive{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9C9A8E;
+    padding: 10px 16px;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 100px;
+  }
+  .media-modal-close{
+    position: fixed;
     top: max(12px, env(safe-area-inset-top));
     right: max(12px, env(safe-area-inset-right));
-    z-index: 2;
+    z-index: 10000;
     width: 44px;
     height: 44px;
     border: 0;
     border-radius: 50%;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.24);
     color: #fff;
     font-size: 28px;
     line-height: 1;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .media-modal-open{ overflow: hidden; }
+  .media-modal-open{
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+  }
 
   @media (max-width: 768px){
     .wrap{ padding: 0 20px; }
@@ -472,8 +525,13 @@
   <div class="media-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mediaModalTitle">
     <button type="button" class="media-modal-close" aria-label="Close video" data-close-modal>&times;</button>
     <p class="media-modal-title" id="mediaModalTitle"></p>
-    <div class="media-modal-player">
+    <div class="media-modal-player" id="mediaModalPlayer">
+      <div class="media-modal-loading">Loading video…</div>
+      <video id="mediaModalVideo" controls playsinline webkit-playsinline preload="metadata"></video>
       <iframe id="mediaModalIframe" allow="autoplay; fullscreen" allowfullscreen title="Video player"></iframe>
+    </div>
+    <div class="media-modal-actions">
+      <a href="#" id="mediaModalDrive" class="media-modal-drive" target="_blank" rel="noopener">Open in Drive ↗</a>
     </div>
   </div>
 </div>
@@ -529,9 +587,28 @@
   (function initMobileMediaPlayer(){
     const MOBILE_QUERY = window.matchMedia('(max-width: 768px)');
     const modal = document.getElementById('mediaModal');
+    const modalPlayer = document.getElementById('mediaModalPlayer');
+    const modalVideo = document.getElementById('mediaModalVideo');
     const modalIframe = document.getElementById('mediaModalIframe');
     const modalTitle = document.getElementById('mediaModalTitle');
-    if (!modal || !modalIframe) return;
+    const modalDrive = document.getElementById('mediaModalDrive');
+    if (!modal || !modalVideo || !modalPlayer) return;
+
+    let scrollY = 0;
+    let streamAttempt = 0;
+
+    function extractDriveFileId(url){
+      const match = url.match(/\/file\/d\/([^/]+)/);
+      return match ? match[1] : null;
+    }
+
+    function getDriveStreamUrls(fileId){
+      return [
+        'https://drive.google.com/uc?export=download&id=' + fileId + '&confirm=t',
+        'https://drive.google.com/uc?export=view&id=' + fileId,
+        'https://drive.google.com/uc?id=' + fileId
+      ];
+    }
 
     function getVideoTitle(container){
       const card = container.closest('.work-card, .exp-card');
@@ -539,20 +616,93 @@
       return card.querySelector('.work-title, .exp-title')?.textContent.trim() || 'Video';
     }
 
-    function openModal(src, title){
+    function getDriveViewUrl(container, previewSrc){
+      const card = container.closest('.work-card, .exp-card');
+      const linked = card?.querySelector('.open-drive')?.href;
+      if (linked) return linked;
+      const fileId = extractDriveFileId(previewSrc);
+      return fileId
+        ? 'https://drive.google.com/file/d/' + fileId + '/view?usp=sharing'
+        : previewSrc.replace('/preview', '/view');
+    }
+
+    function resetPlayer(){
+      modalPlayer.classList.remove('is-loading', 'is-fallback');
+      modalVideo.pause();
+      modalVideo.removeAttribute('src');
+      modalVideo.load();
+      modalIframe.removeAttribute('src');
+      streamAttempt = 0;
+    }
+
+    function useIframeFallback(previewSrc){
+      modalPlayer.classList.remove('is-loading');
+      modalPlayer.classList.add('is-fallback');
+      modalIframe.src = previewSrc;
+    }
+
+    function tryStream(urls, previewSrc){
+      if (streamAttempt >= urls.length) {
+        useIframeFallback(previewSrc);
+        return;
+      }
+
+      modalPlayer.classList.add('is-loading');
+      modalPlayer.classList.remove('is-fallback');
+
+      const nextUrl = urls[streamAttempt];
+      streamAttempt += 1;
+      modalVideo.src = nextUrl;
+      modalVideo.load();
+    }
+
+    modalVideo.addEventListener('loadeddata', () => {
+      modalPlayer.classList.remove('is-loading');
+      modalVideo.play().catch(() => {});
+    });
+
+    modalVideo.addEventListener('error', () => {
+      const previewSrc = modal.dataset.previewSrc;
+      const urls = modal.dataset.streamUrls ? JSON.parse(modal.dataset.streamUrls) : [];
+      tryStream(urls, previewSrc);
+    });
+
+    function openModal(previewSrc, title, driveUrl){
+      scrollY = window.scrollY;
+      resetPlayer();
+
       modalTitle.textContent = title;
-      modalIframe.src = src;
+      modalDrive.href = driveUrl;
+      modal.dataset.previewSrc = previewSrc;
+
+      const fileId = extractDriveFileId(previewSrc);
       modal.classList.add('is-open');
       modal.setAttribute('aria-hidden', 'false');
       document.body.classList.add('media-modal-open');
+      document.body.style.top = '-' + scrollY + 'px';
+      if (typeof lenis !== 'undefined' && lenis) lenis.stop();
+
+      if (!fileId) {
+        useIframeFallback(previewSrc);
+        return;
+      }
+
+      const urls = getDriveStreamUrls(fileId);
+      modal.dataset.streamUrls = JSON.stringify(urls);
+      tryStream(urls, previewSrc);
     }
 
     function closeModal(){
       modal.classList.remove('is-open');
       modal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('media-modal-open');
-      modalIframe.removeAttribute('src');
+      document.body.style.top = '';
+      window.scrollTo(0, scrollY);
       modalTitle.textContent = '';
+      resetPlayer();
+      delete modal.dataset.previewSrc;
+      delete modal.dataset.streamUrls;
+      if (typeof lenis !== 'undefined' && lenis) lenis.start();
     }
 
     document.querySelectorAll('.player-frame, .exp-player').forEach((container) => {
@@ -561,13 +711,14 @@
 
       const src = iframe.getAttribute('src');
       const title = getVideoTitle(container);
+      const driveUrl = getDriveViewUrl(container, src);
 
       const trigger = document.createElement('button');
       trigger.type = 'button';
       trigger.className = 'player-mobile-trigger';
       trigger.setAttribute('aria-label', 'Play ' + title + ' in fullscreen');
       trigger.innerHTML = '<span class="player-play-icon" aria-hidden="true"></span><span>Watch video</span>';
-      trigger.addEventListener('click', () => openModal(src, title));
+      trigger.addEventListener('click', () => openModal(src, title, driveUrl));
       container.appendChild(trigger);
     });
 
