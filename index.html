@@ -435,7 +435,7 @@
       -webkit-tap-highlight-color: transparent;
       padding-bottom: 2px;
     }
-    
+
     .card-close-btn:hover {
       background: var(--accent);
       border-color: var(--accent);
@@ -703,7 +703,7 @@
               <div class="work-title">Ching's — Event Ad</div>
               <div class="work-tags">
                 <span class="work-tag">Ching's</span>
-                <span class="work-tag">Event Ad</span>
+                <span class="work-tag">Event welcome Screen </span>
                 <span class="work-tag time">Completed in half a day</span>
               </div>
             </div>
@@ -891,7 +891,7 @@
         // Function to play video inline
         function playVideo() {
           if (container.classList.contains('is-playing')) return;
-          
+
           container.classList.add('is-playing');
           if (playBtn) playBtn.remove(); // Remove preview button
           if (fsBtn) fsBtn.remove(); // Remove fullscreen button
@@ -920,7 +920,7 @@
           // Close video logic
           closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            
+
             // Stop fullscreen if active on this card
             if (document.fullscreenElement === container || document.webkitFullscreenElement === container) {
               if (document.exitFullscreen) {
